@@ -45,7 +45,7 @@ class BTreeNode:
         node.values = list(unpacked[3+MAX_KEYS:3+2*MAX_KEYS])
         node.children = list(unpacked[3+2*MAX_KEYS:])
         return node
-    class IndexFile:
+class IndexFile:
     def __init__(self, filename, mode='r+b'):
         self.filename = filename
         if mode == 'create':
@@ -102,3 +102,44 @@ class BTreeNode:
 
     def close(self):
         self.file.close()
+    def search(self, key):
+        if self.root_id == 0: return None
+        curr = self.read_node(self.root_id)
+        while True:
+            i = 0
+            while i < curr.num_keys and key > curr.keys[i]: i += 1
+            if i < curr.num_keys and key == curr.keys[i]: return (curr.keys[i], curr.values[i])
+            if curr.is_leaf: return None
+            curr = self.read_node(curr.children[i])
+
+    def insert(self, key, value):
+        if key < 0 or value < 0:
+            print("Error: Key and Value must be unsigned.")
+            return
+
+        if self.search(key):
+            print(f"Error: Key {key} already exists.")
+            return
+
+        if self.root_id == 0:
+            root = self.allocate_node()
+            root.num_keys = 1
+            root.keys[0] = key
+            root.values[0] = value
+            self.root_id = root.block_id
+            self.write_node(root)
+            self._write_header()
+            return
+
+        root = self.read_node(self.root_id)
+        if root.num_keys == MAX_KEYS:
+            new_root = self.allocate_node()
+            new_root.children[0] = self.root_id
+            root.parent_id = new_root.block_id
+            self.write_node(root)
+            self.root_id = new_root.block_id
+            self._write_header()
+            self.split_child(new_root, 0, root)
+            self.insert_non_full_iterative(new_root, key, value)
+        else:
+            self.insert_non_full_iterative(root, key, value)
