@@ -143,3 +143,77 @@ class IndexFile:
             self.insert_non_full_iterative(new_root, key, value)
         else:
             self.insert_non_full_iterative(root, key, value)
+
+    def split_child(self, parent, index, child):
+        z = self.allocate_node()
+        z.parent_id = parent.block_id
+        t = DEGREE
+        
+        # Move keys t..2t-2 to Z
+        z.num_keys = t - 1
+        for j in range(t - 1):
+            z.keys[j] = child.keys[j + t]
+            z.values[j] = child.values[j + t]
+            child.keys[j + t] = 0
+            child.values[j + t] = 0
+
+        # Move children t..2t-1 to Z
+        if not child.is_leaf:
+            for j in range(t):
+                z.children[j] = child.children[j + t]
+                if z.children[j] != 0:
+                    # Transiently load grandchild to update parent pointer
+                    gc = self.read_node(z.children[j])
+                    gc.parent_id = z.block_id
+                    self.write_node(gc)
+                child.children[j + t] = 0
+
+        child.num_keys = t - 1
+
+        for j in range(parent.num_keys, index, -1):
+            parent.children[j + 1] = parent.children[j]
+        parent.children[index + 1] = z.block_id
+
+        for j in range(parent.num_keys - 1, index - 1, -1):
+            parent.keys[j + 1] = parent.keys[j]
+            parent.values[j + 1] = parent.values[j]
+
+        parent.keys[index] = child.keys[t - 1]
+        parent.values[index] = child.values[t - 1]
+        parent.num_keys += 1
+        
+        child.keys[t - 1] = 0
+        child.values[t - 1] = 0
+
+        self.write_node(child)
+        self.write_node(z)
+        self.write_node(parent)
+
+    def insert_non_full_iterative(self, curr, key, value):
+        while True:
+            i = curr.num_keys - 1
+            if curr.is_leaf:
+                while i >= 0 and key < curr.keys[i]:
+                    curr.keys[i + 1] = curr.keys[i]
+                    curr.values[i + 1] = curr.values[i]
+                    i -= 1
+                curr.keys[i + 1] = key
+                curr.values[i + 1] = value
+                curr.num_keys += 1
+                self.write_node(curr)
+                return
+            else:
+                while i >= 0 and key < curr.keys[i]:
+                    i -= 1
+                i += 1
+                
+                child_id = curr.children[i]
+                child = self.read_node(child_id)
+                
+                if child.num_keys == MAX_KEYS:
+                    self.split_child(curr, i, child)
+                    if key > curr.keys[i]:
+                        i += 1
+                    child = self.read_node(curr.children[i])
+                
+                curr = child
