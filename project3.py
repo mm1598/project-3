@@ -45,3 +45,60 @@ class BTreeNode:
         node.values = list(unpacked[3+MAX_KEYS:3+2*MAX_KEYS])
         node.children = list(unpacked[3+2*MAX_KEYS:])
         return node
+    class IndexFile:
+    def __init__(self, filename, mode='r+b'):
+        self.filename = filename
+        if mode == 'create':
+            if os.path.exists(filename):
+                print(f"Error: File {filename} already exists.")
+                sys.exit(1)
+            self.file = open(filename, 'wb+')
+            self.root_id = 0
+            self.next_block_id = 1
+            self._write_header()
+        else:
+            if not os.path.exists(filename):
+                print(f"Error: File {filename} does not exist.")
+                sys.exit(1)
+            self.file = open(filename, 'r+b')
+            self._read_header()
+
+    def _write_header(self):
+        self.file.seek(0)
+        self.file.write(struct.pack(HEADER_FMT, MAGIC_NUMBER, self.root_id, self.next_block_id))
+
+    def _read_header(self):
+        self.file.seek(0)
+        data = self.file.read(BLOCK_SIZE)
+        if len(data) < BLOCK_SIZE:
+             print("Error: Invalid index file.")
+             sys.exit(1)
+        try:
+            magic, root, next_id = struct.unpack(HEADER_FMT, data)
+        except struct.error:
+             print("Error: Invalid header.")
+             sys.exit(1)
+        if magic != MAGIC_NUMBER:
+            print("Error: Invalid magic number.")
+            sys.exit(1)
+        self.root_id = root
+        self.next_block_id = next_id
+
+    def read_node(self, block_id):
+        if block_id == 0: return None
+        self.file.seek(block_id * BLOCK_SIZE)
+        return BTreeNode.deserialize(self.file.read(BLOCK_SIZE))
+
+    def write_node(self, node):
+        self.file.seek(node.block_id * BLOCK_SIZE)
+        self.file.write(node.serialize())
+
+    def allocate_node(self):
+        node = BTreeNode()
+        node.block_id = self.next_block_id
+        self.next_block_id += 1
+        self._write_header()
+        return node
+
+    def close(self):
+        self.file.close()
