@@ -9,3 +9,6 @@ Add B-Tree search and basic insertion framework
 
 4:25
 Implement iterative B-Tree insertion and node splitting
+
+4:40
+Add CLI commands, traversal logic, and main entry point
